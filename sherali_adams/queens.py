@@ -1,9 +1,9 @@
-import cvxpy
 import sherali_adams as sa
-import itertools
+from itertools import chain
 import numpy as np
 
-from cvxopt import matrix, solvers
+from cvxopt import matrix, solvers, glpk
+from cvxopt.glpk import lp, ilp
 
 def linearize(n,a,b):
     return n*a + b
@@ -18,7 +18,7 @@ def construct(n):
     avec = -np.ones(n*n)
     b.append(-n)
     acc.append(avec)
-    
+
     #rows
     for i in range(n):
         avec = np.zeros(n*n)
@@ -37,7 +37,7 @@ def construct(n):
 
     #neg diags
     for k in range(1, 2*n-2):
-        avec = np.zeros(n*n)        
+        avec = np.zeros(n*n)
         for r in range(n):
             for s in range(n):
                 if r + s == k:
@@ -47,10 +47,10 @@ def construct(n):
 
     #pos diags
     for k in range(2-n, n-1):
-        avec = np.zeros(n*n)        
+        avec = np.zeros(n*n)
         for r in range(n):
             for s in range(n):
-                if r - s == k:                    
+                if r - s == k:
                     avec[linearize(n,r,s)] = 1
         b.append(1)
         acc.append(avec)
@@ -69,22 +69,42 @@ def construct(n):
         acc.append(avec)
         b.append(0)
 
-    A = np.asarray(list(itertools.chain(*acc)))
+    A = np.asarray(list(chain(*acc)))
     return (np.reshape(A,(len(A)//(n*n), n*n)), b)
 
+def count_non_zero ( v ) :
+
+    t = 0
+
+    for x in v:
+        if x != 0:
+            t += 1
+
+    return t
+
+def fmt ( sol, n ) :
+    v = sol[1][:n]
+    return v, sum(v), count_non_zero(v)
+
 def solve(A,b):
-    solvers.cvxopt.glpk.options['meth'] = 'GLP_PRIMAL'
+    glpk.options['meth'] = 'GLP_PRIMAL'
     (row,col) = A.shape
     n = col
     c = np.ones(col)
-    lp = solvers.cvxopt.glpk.lp(matrix(c),matrix(A),matrix(b,tc='d'))
+    opt = lp(matrix(c),matrix(A),matrix(b,tc='d'))
+    print(fmt(opt, n))
     #print(lp[1], sum(lp[1]))
-    #(st,ip) = solvers.cvxopt.glpk.ilp(matrix(c),matrix(A),matrix(b,tc='d'), I = set(range(n)))
+    #(st,ip) = ilp(matrix(c),matrix(A),matrix(b,tc='d'), I = set(range(n)))
     #print(ip, sum(ip))
     (SA,sb) = sa.run_SA(1,n,A,b)
-    salp = solvers.cvxopt.glpk.lp(np.zeros(SA.shape[1]),matrix(SA),matrix(sb,tc='d'))
-    return (salp[1][0:n], sum(salp[1][0:n]))
+    optsa = lp(np.zeros(SA.shape[1]),matrix(SA),matrix(sb,tc='d'))
+    return fmt(optsa, n)
 
 def run_queens(n):
     (A,b) = construct(n)
     print(solve(A,b))
+
+if __name__ == '__main__':
+    import sys
+    n = int(sys.argv[1])
+    run_queens(n)
